@@ -1,0 +1,2 @@
+/* Favor discussion space while keeping the PDF page proportion intact. */
+.workspace-pdf-canvas{height:465px!important}.workspace-pdf-canvas .pdf-stage{height:min(420px,52vh)!important}.chatcard .messages{height:330px!important}@media(max-width:850px){.workspace-pdf-canvas{height:380px!important}.workspace-pdf-canvas .pdf-stage{height:340px!important}.chatcard .messages{height:275px!important}}

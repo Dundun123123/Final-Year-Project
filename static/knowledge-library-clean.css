@@ -1,0 +1,2 @@
+/* Processing layers remain available to the system but stay out of the learner-facing library. */
+#library .kb-layers{display:none!important}#library .kb-document{padding:13px 0 13px 15px!important}#library .kb-document:last-child{padding-bottom:4px!important}

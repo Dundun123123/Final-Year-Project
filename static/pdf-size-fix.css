@@ -1,0 +1,2 @@
+/* Keep the original A4-like paper shape instead of compressing it into a banner. */
+.workspace-pdf-canvas{height:620px!important;align-items:flex-start!important;padding:20px!important}.workspace-pdf-canvas .pdf-stage{width:auto!important;height:min(570px,68vh)!important;max-width:100%!important;flex:0 0 auto!important}.workspace-pdf-canvas .pdf-stage img{object-fit:fill!important}@media(max-width:850px){.workspace-pdf-canvas{height:480px!important}.workspace-pdf-canvas .pdf-stage{height:440px!important}}

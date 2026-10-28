@@ -1,0 +1,5 @@
+# Local RAG retrieval runtime. Install inside .rag-venv after CUDA-enabled PyTorch.
+sentence-transformers>=6.0,<7.0
+faiss-cpu>=1.15
+rank-bm25>=0.2.2
+numpy>=2.0

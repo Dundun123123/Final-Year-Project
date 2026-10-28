@@ -1,0 +1,21 @@
+{
+  "version": "1.0",
+  "description": "复制 question 对象到 questions.json 的 questions 数组中，完成后再运行评测脚本。",
+  "questions": [
+    {
+      "id": "q001",
+      "question": "Grid Computing 和 Cloud Computing 有什么区别？",
+      "scope": "CST435W",
+      "expected_file_names": ["Cloud Computing 2026 Part I.pdf"],
+      "expected_pages": [4],
+      "acceptable_chunk_ids": [],
+      "expected_evidence": [
+        "填写你从原始 PDF 第 4 页复制出来的 1 至 3 句关键原文。"
+      ],
+      "reference_answer": "可选：填写一至两句人工参考答案，用于后续评估最终生成回答。",
+      "type": "semantic_paraphrase",
+      "verified_by": "你的姓名",
+      "verified_at": "YYYY-MM-DD"
+    }
+  ]
+}

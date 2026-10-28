@@ -1,0 +1,26 @@
+# Local credentials and runtime state
+.env
+.env.*
+!.env.example
+.venv/
+.rag-venv/
+.asr-venv/
+storage/
+course_kb.db*
+*.sqlite*
+*.db
+*.log
+
+# Generated artifacts and caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+tmp/
+output/
+evaluation/results/
+
+# Local editor and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
