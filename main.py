@@ -8,7 +8,7 @@ import sqlite3
 import uuid
 import base64
 import hashlib
-from urllib import request as http_request
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -20,7 +20,11 @@ from pydantic import BaseModel
 from services.markdown_pipeline import create_first_markdown, first_markdown_prompt_fingerprint, local_first_markdown, update_second_markdown
 from services.pdf_extractor import extract_pdf
 from services.hybrid_retrieval import HybridRetriever
-from prompts.rag_prompts import rag_answer_system_prompt, rag_answer_user_prompt
+from services.llm_gateway import call_deepseek, make_deepseek_model
+from services.rag_chain import answer_from_documents, chunks_to_documents, citations_from_documents
+
+
+logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).parent
 STORAGE = ROOT / "storage"
@@ -52,20 +56,8 @@ load_env()
 
 
 def deepseek(messages, max_tokens=800):
-    """OpenAI-compatible DeepSeek request; secret is stored only in local .env."""
-    api_key = os.getenv("DEEPSEEK_API_KEY")
-    if not api_key:
-        return None
-    with db() as c:
-        saved = c.execute("SELECT value FROM settings WHERE key='model'").fetchone()
-    model = saved["value"] if saved else os.getenv("DEEPSEEK_MODEL", "deepseek-flash")
-    payload = {"model": model, "messages": messages, "thinking": {"type": "disabled"}, "max_tokens": max_tokens}
-    req = http_request.Request("https://api.deepseek.com/chat/completions", data=json.dumps(payload, ensure_ascii=False).encode("utf-8"), headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"})
-    try:
-        with http_request.urlopen(req, timeout=45) as response:
-            return json.loads(response.read().decode("utf-8"))["choices"][0]["message"]["content"]
-    except Exception:
-        return None
+    """Compatibility entry point for first/second Markdown and translation."""
+    return call_deepseek(messages, current_model_name(), max_tokens)
 
 
 def db():
@@ -356,19 +348,28 @@ def answer(data: ChatIn, global_mode=False):
     with db() as c:
         sql = "SELECT * FROM chunks" if global_mode or not data.subject else "SELECT * FROM chunks WHERE subject=?"
         rows = c.execute(sql, () if global_mode or not data.subject else (data.subject,)).fetchall()
-        ranked, retrieval_mode = retriever.retrieve(data.question, rows, candidate_k=20, evidence_k=5)
+    ranked, retrieval_mode = retriever.retrieve(data.question, rows, candidate_k=20, evidence_k=5)
+    documents = chunks_to_documents(ranked)
+    citations = citations_from_documents(documents)
+    if documents:
+        summary = None
+        try:
+            model = make_deepseek_model(current_model_name(), max_tokens=800)
+            if model is not None:
+                summary = answer_from_documents(data.question, documents, model)
+        except Exception as exc:
+            logger.warning("RAG generation unavailable (%s); using evidence fallback", type(exc).__name__)
+        if not summary:
+            summary = "根据已检索到的课程资料，" + " ".join(
+                f"《{doc.metadata['subject']}》第{doc.metadata['page']}页提到：{doc.page_content[:120]}"
+                for doc in documents[:2]
+            )
+    else:
+        summary = "DeepSeek 已连接，但在已导入的课件中没有检索到与该问题相关的内容。为避免脱离课件编造答案，系统不会直接生成回答；请换一个课件中的知识点，或上传相关资料。"
+    with db() as c:
         conv = data.conversation_id or str(uuid.uuid4())
         if not data.conversation_id:
             c.execute("INSERT INTO conversations VALUES (?,?,?,?)", (conv, "master_agent" if global_mode else "subject_agent", None if global_mode else data.subject, datetime.now().isoformat()))
-        citations = [{"chunk_id": r.chunk_id, "subject": r.subject, "page": r.page, "snippet": r.content[:160], "bm25_rank": r.bm25_rank, "vector_rank": r.vector_rank, "rrf_score": r.rrf_score} for r in ranked]
-        if ranked:
-            context = "\n\n".join(f"【证据 {index}｜科目：{r.subject}｜页码：{r.page}】\n{r.content}" for index, r in enumerate(ranked, start=1))
-            summary = deepseek([
-                {"role": "system", "content": rag_answer_system_prompt()},
-                {"role": "user", "content": rag_answer_user_prompt(data.question, context)}
-            ]) or ("根据已检索到的课程资料，" + " ".join(f"《{r.subject}》第{r.page}页提到：{r.content[:120]}" for r in ranked[:2]))
-        else:
-            summary = "DeepSeek 已连接，但在已导入的课件中没有检索到与该问题相关的内容。为避免脱离课件编造答案，系统不会直接生成回答；请换一个课件中的知识点，或上传相关资料。"
         now = datetime.now().isoformat()
         c.execute("INSERT INTO messages VALUES (?,?,?,?,?,?)", (str(uuid.uuid4()), conv, "user", data.question, "[]", now))
         c.execute("INSERT INTO messages VALUES (?,?,?,?,?,?)", (str(uuid.uuid4()), conv, "assistant", summary, json.dumps(citations, ensure_ascii=False), now))
