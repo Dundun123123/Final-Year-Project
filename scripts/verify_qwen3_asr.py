@@ -7,10 +7,11 @@ from pathlib import Path
 import torch
 from qwen_asr import Qwen3ASRModel
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MODEL_DIR = PROJECT_ROOT / "storage" / "models" / "Qwen3-ASR-0.6B"
-SAMPLE_AUDIO = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-ASR-Repo/asr_en.wav"
+SAMPLE_AUDIO = (
+    "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-ASR-Repo/asr_en.wav"
+)
 
 
 def main() -> None:
@@ -34,7 +35,9 @@ def main() -> None:
     print(f"text={result.text}")
     if device.startswith("cuda"):
         print(f"gpu={torch.cuda.get_device_name(0)}")
-        print(f"max_gpu_memory_mb={torch.cuda.max_memory_allocated() / 1024 / 1024:.1f}")
+        print(
+            f"max_gpu_memory_mb={torch.cuda.max_memory_allocated() / 1024 / 1024:.1f}"
+        )
 
 
 if __name__ == "__main__":

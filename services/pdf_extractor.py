@@ -1,4 +1,5 @@
 """PDF text extraction, page indexing and initial retrieval chunk generation."""
+
 import json
 import re
 import uuid
@@ -38,25 +39,86 @@ def split_text(text: str, size: int = 500, overlap: int = 100) -> list[str]:
 
 
 def detect_terms(text: str) -> list[tuple[str, str]]:
-    keywords = ["卷积神经网络", "神经网络", "傅里叶变换", "拉普拉斯变换", "采样定理", "向量", "矩阵", "算法", "模型", "特征", "损失函数", "概率", "信号", "系统"]
-    return [(term, "COURSE_TERM" if len(term) <= 4 else "COURSE_CONCEPT") for term in keywords if term in text]
+    keywords = [
+        "卷积神经网络",
+        "神经网络",
+        "傅里叶变换",
+        "拉普拉斯变换",
+        "采样定理",
+        "向量",
+        "矩阵",
+        "算法",
+        "模型",
+        "特征",
+        "损失函数",
+        "概率",
+        "信号",
+        "系统",
+    ]
+    return [
+        (term, "COURSE_TERM" if len(term) <= 4 else "COURSE_CONCEPT")
+        for term in keywords
+        if term in text
+    ]
 
 
 def extract_pdf(path: Path, file_id: str, subject: str):
     import fitz
+
     chunks, entities, pages = [], [], []
     document = fitz.open(path)
     for index, page in enumerate(document):
         words = page.get_text("words")
         text = " ".join(word[4] for word in words)
-        page_words = [{"x0": word[0], "y0": word[1], "x1": word[2], "y1": word[3], "text": word[4]} for word in words]
+        page_words = [
+            {
+                "x0": word[0],
+                "y0": word[1],
+                "x1": word[2],
+                "y1": word[3],
+                "text": word[4],
+            }
+            for word in words
+        ]
         page_number = index + 1
-        pages.append((file_id, page_number, text, json.dumps(page_words, ensure_ascii=False), page.rect.width, page.rect.height))
-        bboxes = [[round(word[0], 1), round(word[1], 1), round(word[2], 1), round(word[3], 1)] for word in words]
+        pages.append(
+            (
+                file_id,
+                page_number,
+                text,
+                json.dumps(page_words, ensure_ascii=False),
+                page.rect.width,
+                page.rect.height,
+            )
+        )
+        bboxes = [
+            [round(word[0], 1), round(word[1], 1), round(word[2], 1), round(word[3], 1)]
+            for word in words
+        ]
         for chunk_index, chunk_content in enumerate(split_text(text)):
-            chunks.append((f"{file_id}_p{page_number}_{chunk_index}", file_id, page_number, chunk_content, json.dumps(bboxes, ensure_ascii=False), subject))
+            chunks.append(
+                (
+                    f"{file_id}_p{page_number}_{chunk_index}",
+                    file_id,
+                    page_number,
+                    chunk_content,
+                    json.dumps(bboxes, ensure_ascii=False),
+                    subject,
+                )
+            )
         for term, term_type in detect_terms(text):
             rects = page.search_for(term)
-            entities.append((str(uuid.uuid4()), file_id, page_number, term, term_type, json.dumps([[rect.x0, rect.y0, rect.x1, rect.y1] for rect in rects])))
+            entities.append(
+                (
+                    str(uuid.uuid4()),
+                    file_id,
+                    page_number,
+                    term,
+                    term_type,
+                    json.dumps(
+                        [[rect.x0, rect.y0, rect.x1, rect.y1] for rect in rects]
+                    ),
+                )
+            )
     document.close()
     return chunks, entities, pages

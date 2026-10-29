@@ -12,15 +12,13 @@ import re
 import sqlite3
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import faiss
-import numpy as np
 import torch
 from sentence_transformers import SentenceTransformer
-
 
 ROOT = Path(__file__).resolve().parents[1]
 DATABASE_PATH = ROOT / "course_kb.db"
@@ -50,7 +48,9 @@ def load_questions(path: Path) -> list[dict[str, Any]]:
     for item in questions:
         missing = required - set(item)
         if missing:
-            raise ValueError(f"题目 {item.get('id', '<unknown>')} 缺少字段：{', '.join(sorted(missing))}")
+            raise ValueError(
+                f"题目 {item.get('id', '<unknown>')} 缺少字段：{', '.join(sorted(missing))}"
+            )
     return questions
 
 
@@ -58,15 +58,13 @@ def load_chunks(database_path: Path) -> list[Chunk]:
     connection = sqlite3.connect(database_path)
     connection.row_factory = sqlite3.Row
     try:
-        rows = connection.execute(
-            """
+        rows = connection.execute("""
             SELECT c.chunk_id, c.file_id, f.file_name, c.subject, c.page, c.content
             FROM chunks AS c
             JOIN files AS f ON f.file_id = c.file_id
             WHERE c.content IS NOT NULL AND trim(c.content) <> ''
             ORDER BY c.subject, c.file_id, c.page, c.chunk_id
-            """
-        ).fetchall()
+            """).fetchall()
     finally:
         connection.close()
     return [Chunk(**dict(row)) for row in rows]
@@ -86,7 +84,11 @@ def is_relevant(question: dict[str, Any], chunk: Chunk) -> bool:
     expected_file_ids = set(question.get("expected_file_ids") or [])
     expected_file_names = set(question.get("expected_file_names") or [])
     file_matches = not expected_file_ids and not expected_file_names
-    file_matches = file_matches or chunk.file_id in expected_file_ids or chunk.file_name in expected_file_names
+    file_matches = (
+        file_matches
+        or chunk.file_id in expected_file_ids
+        or chunk.file_name in expected_file_names
+    )
     return file_matches and chunk.page in expected_pages
 
 
@@ -100,7 +102,9 @@ def group_chunks(chunks: list[Chunk]) -> dict[str, list[Chunk]]:
 def keyword_score(query: str, content: str) -> float:
     """Match the current application's keyword-count baseline."""
     tokens = set(re.findall(r"[\u4e00-\u9fff]{1,}|[A-Za-z0-9_]+", query.lower()))
-    return float(sum(content.lower().count(token) for token in tokens if len(token) > 1))
+    return float(
+        sum(content.lower().count(token) for token in tokens if len(token) > 1)
+    )
 
 
 def build_indexes(
@@ -110,7 +114,10 @@ def build_indexes(
 ) -> dict[str, tuple[faiss.IndexFlatIP, list[Chunk]]]:
     indexes: dict[str, tuple[faiss.IndexFlatIP, list[Chunk]]] = {}
     for scope, scope_chunks in group_chunks(chunks).items():
-        texts = [f"{chunk.subject}\nPage {chunk.page}\n{chunk.content}" for chunk in scope_chunks]
+        texts = [
+            f"{chunk.subject}\nPage {chunk.page}\n{chunk.content}"
+            for chunk in scope_chunks
+        ]
         vectors = model.encode(
             texts,
             batch_size=batch_size,
@@ -142,13 +149,18 @@ def evaluate(
     for question in questions:
         scope = normalise_scope(question) or "global"
         if scope not in scopes:
-            raise ValueError(f"题目 {question['id']} 的 scope={scope} 不存在于当前知识库。")
+            raise ValueError(
+                f"题目 {question['id']} 的 scope={scope} 不存在于当前知识库。"
+            )
         scope_chunks = scopes[scope]
         started_at = time.perf_counter()
         limit = min(max(top_k, 10), len(scope_chunks))
         if retriever == "keyword":
             candidate_pairs = sorted(
-                ((position, keyword_score(question["question"], chunk.content)) for position, chunk in enumerate(scope_chunks)),
+                (
+                    (position, keyword_score(question["question"], chunk.content))
+                    for position, chunk in enumerate(scope_chunks)
+                ),
                 key=lambda item: item[1],
                 reverse=True,
             )[:limit]
@@ -163,7 +175,10 @@ def evaluate(
                 convert_to_numpy=True,
             ).astype("float32")
             scores, positions = index.search(query_vector, limit)
-            candidate_pairs = [(int(position), float(score)) for position, score in zip(positions[0], scores[0], strict=True)]
+            candidate_pairs = [
+                (int(position), float(score))
+                for position, score in zip(positions[0], scores[0], strict=True)
+            ]
         latency_ms = (time.perf_counter() - started_at) * 1000
         total_latency_ms += latency_ms
 
@@ -191,7 +206,11 @@ def evaluate(
 
         recall_hits += int(first_relevant_rank is not None and first_relevant_rank <= 5)
         page_hits += int(any(item["relevant"] for item in ranked[:3]))
-        reciprocal_rank_sum += 1 / first_relevant_rank if first_relevant_rank and first_relevant_rank <= 10 else 0.0
+        reciprocal_rank_sum += (
+            1 / first_relevant_rank
+            if first_relevant_rank and first_relevant_rank <= 10
+            else 0.0
+        )
         per_question.append(
             {
                 "id": question["id"],
@@ -216,9 +235,17 @@ def evaluate(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Evaluate a local embedding model on courseware retrieval.")
-    parser.add_argument("--model", default="BAAI/bge-m3", help="Hugging Face model name or local fine-tuned model directory")
-    parser.add_argument("--name", required=True, help="Result file name, e.g. bge-m3-base")
+    parser = argparse.ArgumentParser(
+        description="Evaluate a local embedding model on courseware retrieval."
+    )
+    parser.add_argument(
+        "--model",
+        default="BAAI/bge-m3",
+        help="Hugging Face model name or local fine-tuned model directory",
+    )
+    parser.add_argument(
+        "--name", required=True, help="Result file name, e.g. bge-m3-base"
+    )
     parser.add_argument("--questions", type=Path, default=DEFAULT_QUESTIONS)
     parser.add_argument("--database", type=Path, default=DATABASE_PATH)
     parser.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS_DIR)
@@ -227,7 +254,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument("--retriever", choices=["dense", "keyword"], default="dense")
-    parser.add_argument("--local-only", action="store_true", help="Only load already cached local model files")
+    parser.add_argument(
+        "--local-only",
+        action="store_true",
+        help="Only load already cached local model files",
+    )
     return parser.parse_args()
 
 
@@ -235,7 +266,9 @@ def main() -> None:
     args = parse_args()
     if not args.database.exists():
         raise FileNotFoundError(f"找不到数据库：{args.database}")
-    device = "cuda" if args.device == "auto" and torch.cuda.is_available() else args.device
+    device = (
+        "cuda" if args.device == "auto" and torch.cuda.is_available() else args.device
+    )
     if device == "auto":
         device = "cpu"
     if device == "cuda" and not torch.cuda.is_available():
@@ -260,7 +293,7 @@ def main() -> None:
     metrics = evaluate(model, indexes, scopes, questions, args.top_k, args.retriever)
     output = {
         "run_name": args.name,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "model": args.model,
         "retriever": args.retriever,
         "device": device,
@@ -269,7 +302,9 @@ def main() -> None:
     }
     args.results_dir.mkdir(parents=True, exist_ok=True)
     output_path = args.results_dir / f"{args.name}.json"
-    output_path.write_text(json.dumps(output, ensure_ascii=False, indent=2), encoding="utf-8")
+    output_path.write_text(
+        json.dumps(output, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     print("\n=== Retrieval evaluation ===")
     print(f"Recall@5: {metrics['recall_at_5']:.2%}")
     print(f"MRR@10: {metrics['mrr_at_10']:.4f}")

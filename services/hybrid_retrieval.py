@@ -8,19 +8,55 @@ searchable without a separate vector-database service during this project stage.
 from __future__ import annotations
 
 import hashlib
-import os
 import re
 import threading
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
-
+from typing import Any
 
 TOKEN_PATTERN = re.compile(r"[\u4e00-\u9fff]{1,}|[A-Za-z0-9_+-]+")
 ENGLISH_STOPWORDS = {
-    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how", "in", "is", "it",
-    "of", "on", "or", "the", "to", "was", "were", "what", "when", "where", "which", "who", "why",
-    "with", "can", "could", "do", "does", "did", "have", "has", "had", "this", "that", "these", "those",
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "how",
+    "in",
+    "is",
+    "it",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "was",
+    "were",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "why",
+    "with",
+    "can",
+    "could",
+    "do",
+    "does",
+    "did",
+    "have",
+    "has",
+    "had",
+    "this",
+    "that",
+    "these",
+    "those",
 }
 
 
@@ -39,7 +75,9 @@ class RetrievedChunk:
 class HybridRetriever:
     """Provides a local hybrid retriever with a graceful keyword-only fallback."""
 
-    def __init__(self, model_cache_dir: Path, model_name: str = "BAAI/bge-m3", rrf_k: int = 60):
+    def __init__(
+        self, model_cache_dir: Path, model_name: str = "BAAI/bge-m3", rrf_k: int = 60
+    ):
         self.model_cache_dir = Path(model_cache_dir)
         self.model_name = model_name
         self.rrf_k = rrf_k
@@ -55,7 +93,8 @@ class HybridRetriever:
         return [
             token
             for token in TOKEN_PATTERN.findall((text or "").lower())
-            if "\u4e00" <= token[0] <= "\u9fff" or (len(token) > 1 and token not in ENGLISH_STOPWORDS)
+            if "\u4e00" <= token[0] <= "\u9fff"
+            or (len(token) > 1 and token not in ENGLISH_STOPWORDS)
         ]
 
     @staticmethod
@@ -72,7 +111,7 @@ class HybridRetriever:
     def _fingerprint_for(chunks: Iterable[RetrievedChunk]) -> str:
         digest = hashlib.sha256()
         for chunk in chunks:
-            digest.update(f"{chunk.chunk_id}\0{chunk.content}\0".encode("utf-8"))
+            digest.update(f"{chunk.chunk_id}\0{chunk.content}\0".encode())
         return digest.hexdigest()
 
     def invalidate(self) -> None:
@@ -98,6 +137,7 @@ class HybridRetriever:
         device = "cpu"
         try:
             import torch
+
             if torch.cuda.is_available():
                 device = "cuda"
         except Exception:
@@ -132,26 +172,47 @@ class HybridRetriever:
         self._indexed_chunks = chunks
         self._fingerprint = fingerprint
 
-    def _bm25_results(self, query: str, chunks: list[RetrievedChunk], top_k: int) -> list[tuple[int, float]]:
+    def _bm25_results(
+        self, query: str, chunks: list[RetrievedChunk], top_k: int
+    ) -> list[tuple[int, float]]:
         query_tokens = self.tokenize(query)
         if not query_tokens:
             return []
         try:
             from rank_bm25 import BM25Okapi
+
             tokenized_corpus = [self.tokenize(item.content) for item in chunks]
             scores = BM25Okapi(tokenized_corpus).get_scores(query_tokens)
         except ModuleNotFoundError:
             # Preserve a safe local baseline if the optional RAG dependencies
             # have not yet been installed in the active Python environment.
-            scores = [sum(item.content.lower().count(token) for token in query_tokens if len(token) > 1) for item in chunks]
-        positions = sorted(range(len(chunks)), key=lambda index: float(scores[index]), reverse=True)
-        return [(position, float(scores[position])) for position in positions[:top_k] if scores[position] > 0]
+            scores = [
+                sum(
+                    item.content.lower().count(token)
+                    for token in query_tokens
+                    if len(token) > 1
+                )
+                for item in chunks
+            ]
+        positions = sorted(
+            range(len(chunks)), key=lambda index: float(scores[index]), reverse=True
+        )
+        return [
+            (position, float(scores[position]))
+            for position in positions[:top_k]
+            if scores[position] > 0
+        ]
 
-    def _vector_results(self, query: str, chunks: list[RetrievedChunk], top_k: int) -> list[tuple[int, float]]:
+    def _vector_results(
+        self, query: str, chunks: list[RetrievedChunk], top_k: int
+    ) -> list[tuple[int, float]]:
         self._ensure_vector_index(chunks)
         model = self._load_model()
         query_vector = model.encode(
-            [query], normalize_embeddings=True, show_progress_bar=False, convert_to_numpy=True
+            [query],
+            normalize_embeddings=True,
+            show_progress_bar=False,
+            convert_to_numpy=True,
         ).astype("float32")
         scores, positions = self._index.search(query_vector, min(top_k, len(chunks)))
         return [
@@ -170,11 +231,15 @@ class HybridRetriever:
         merged: dict[int, dict[str, float | int | None]] = {}
         for source, results in (("bm25", bm25_results), ("vector", vector_results)):
             for rank, (position, _) in enumerate(results, start=1):
-                record = merged.setdefault(position, {"score": 0.0, "bm25_rank": None, "vector_rank": None})
+                record = merged.setdefault(
+                    position, {"score": 0.0, "bm25_rank": None, "vector_rank": None}
+                )
                 record["score"] = float(record["score"]) + 1 / (self.rrf_k + rank)
                 record[f"{source}_rank"] = rank
 
-        ordered = sorted(merged.items(), key=lambda pair: float(pair[1]["score"]), reverse=True)[:top_k]
+        ordered = sorted(
+            merged.items(), key=lambda pair: float(pair[1]["score"]), reverse=True
+        )[:top_k]
         return [
             RetrievedChunk(
                 **{
@@ -187,7 +252,13 @@ class HybridRetriever:
             for position, data in ordered
         ]
 
-    def retrieve(self, query: str, rows: Iterable[Any], candidate_k: int = 20, evidence_k: int = 5) -> tuple[list[RetrievedChunk], str]:
+    def retrieve(
+        self,
+        query: str,
+        rows: Iterable[Any],
+        candidate_k: int = 20,
+        evidence_k: int = 5,
+    ) -> tuple[list[RetrievedChunk], str]:
         """Return fused evidence and the active retrieval mode.
 
         The fallback is intentional: the application can still answer from the
@@ -202,7 +273,9 @@ class HybridRetriever:
             # PDF extraction can create micro-fragments such as “is”. They are
             # not meaningful evidence, but retain short chunks containing a
             # number because they may be a compact formula or parameter.
-            if len(normalised_content) < 16 and not any(char.isdigit() for char in normalised_content):
+            if len(normalised_content) < 16 and not any(
+                char.isdigit() for char in normalised_content
+            ):
                 continue
             duplicate_key = (item.subject, item.page, normalised_content)
             if duplicate_key in seen:

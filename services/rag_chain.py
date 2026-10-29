@@ -12,7 +12,6 @@ from langchain_core.runnables import Runnable
 from prompts.rag_prompts import rag_answer_system_prompt, rag_answer_user_prompt
 from services.hybrid_retrieval import RetrievedChunk
 
-
 RAG_PROMPT = ChatPromptTemplate.from_messages(
     [
         ("system", rag_answer_system_prompt()),
@@ -63,7 +62,11 @@ def format_evidence(documents: Iterable[Document]) -> str:
     )
 
 
-def answer_from_documents(question: str, documents: list[Document], model: Runnable) -> str:
+def answer_from_documents(
+    question: str, documents: list[Document], model: Runnable
+) -> str:
     """Compose the prompt, model and output parser as a LangChain chain."""
     chain = RAG_PROMPT | model | StrOutputParser()
-    return chain.invoke({"question": question, "evidence": format_evidence(documents)}).strip()
+    return chain.invoke(
+        {"question": question, "evidence": format_evidence(documents)}
+    ).strip()

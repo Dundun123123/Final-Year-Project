@@ -1,9 +1,9 @@
 """Verify the locally cached BGE-M3 embedding model and CUDA availability."""
+
 from pathlib import Path
 
 import torch
 from sentence_transformers import SentenceTransformer
-
 
 MODEL_NAME = "BAAI/bge-m3"
 CACHE_DIR = Path(__file__).resolve().parents[1] / "storage" / "models"
@@ -33,7 +33,9 @@ def main() -> None:
     print(f"cache_dir={CACHE_DIR}")
     if device == "cuda":
         print(f"gpu={torch.cuda.get_device_name(0)}")
-        print(f"max_gpu_memory_mb={torch.cuda.max_memory_allocated(0) / 1024 / 1024:.1f}")
+        print(
+            f"max_gpu_memory_mb={torch.cuda.max_memory_allocated(0) / 1024 / 1024:.1f}"
+        )
 
 
 if __name__ == "__main__":

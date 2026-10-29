@@ -14,7 +14,10 @@ def first_markdown_system_prompt() -> str:
 6. 不要使用代码围栏。
 7. 保持原文可以提取的文字，按从左到右、从上到下的顺序输出，不要遗漏。"""
 
-def first_markdown_user_prompt(file_name: str, subject: str, page_number: int, page_text: str) -> str:
+
+def first_markdown_user_prompt(
+    file_name: str, subject: str, page_number: int, page_text: str
+) -> str:
     """Context provided to the first-pass model for one PDF page."""
     return f"""文件：{file_name}
 科目：{subject}
