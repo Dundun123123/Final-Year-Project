@@ -37,6 +37,21 @@ start.bat
 
 检索评测需要先上传课程 PDF，并在 `evaluation/questions.json` 填写人工核对过的问题；格式见 `evaluation/README.md`。检索预览接口不会调用云端模型。普通问答和翻译在配置 API 后会向 DeepSeek 发送必要文本。
 
+## 代码格式与检查
+
+开发环境额外安装 `requirements-dev.txt`。Black 负责代码格式，isort 负责导入顺序；Flake8 检查基础规范，Ruff 检查常见错误与过时写法。四项检查也会在 GitHub Actions 中运行。
+
+```cmd
+.rag-venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.rag-venv\Scripts\python.exe -m isort --check-only main.py services prompts scripts tests
+.rag-venv\Scripts\python.exe -m black --check main.py services prompts scripts tests
+.rag-venv\Scripts\python.exe -m flake8 main.py services prompts scripts tests
+.rag-venv\Scripts\python.exe -m ruff check main.py services prompts scripts tests
+.rag-venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+需要自动整理时，先运行 `python -m isort`，再运行 `python -m black`；Ruff 不再重复执行格式化。
+
 ## 数据与使用范围
 
 这是**单机原型**。当前登录接口没有服务器端会话和按用户隔离的访问控制，因此不要直接开放到公网，也不要把它当作已经具备多人共享权限的服务。`storage/`、SQLite 数据库、模型文件、`.env` 和本地生成物均被 Git 忽略；提交前仍应运行 `git status` 检查。

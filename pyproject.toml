@@ -1,0 +1,16 @@
+[tool.black]
+line-length = 88
+target-version = ["py313"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+skip_gitignore = true
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+# Black formats; isort sorts imports; Ruff checks bugs and modernization.
+select = ["B", "UP"]
